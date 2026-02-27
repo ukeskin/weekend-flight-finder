@@ -1,0 +1,6 @@
+fast-flights
+pandas
+openpyxl
+tqdm
+streamlit
+plotly

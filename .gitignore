@@ -1,0 +1,13 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.env
+# data/*.db - DB is needed for deploy
+*.xlsx
+checkpoint.json
+ucuslar_ara.csv
+frontend/package-lock.json
+
+.DS_Store
+*.log
