@@ -16,20 +16,20 @@
         </thead>
         <tbody>
           <tr v-for="trip in trips" :key="trip.id">
-            <td>{{ trip.kalkis_havalimani }}</td>
-            <td>{{ trip.varis_sehir }}</td>
-            <td>{{ trip.varis_ulke }}</td>
-            <td>{{ trip.hafta_sonu }}</td>
-            <td>{{ trip.havayolu_gidis }}</td>
-            <td>{{ trip.kalkis_saati_gidis }}</td>
-            <td>{{ transferText(trip.aktarma_int_gidis) }}</td>
-            <td>{{ trip.fiyat_tl_gidis ? '₺' + Math.round(trip.fiyat_tl_gidis).toLocaleString('tr-TR') : '' }}</td>
-            <td>{{ trip.havayolu_donus }}</td>
-            <td>{{ trip.kalkis_saati_donus }}</td>
-            <td>{{ transferText(trip.aktarma_int_donus) }}</td>
-            <td>{{ trip.fiyat_tl_donus ? '₺' + Math.round(trip.fiyat_tl_donus).toLocaleString('tr-TR') : '' }}</td>
-            <td style="color: var(--green); font-weight: 600;">₺{{ Math.round(trip.toplam_fiyat).toLocaleString('tr-TR') }}</td>
-            <td><span class="deal-score">{{ trip.skor }}</span></td>
+            <td>{{ trip.origin }}</td>
+            <td>{{ trip.destination_city }}</td>
+            <td>{{ trip.destination_country }}</td>
+            <td>{{ trip.weekend }}</td>
+            <td>{{ trip.outbound?.airline }}</td>
+            <td>{{ trip.outbound?.departure_time }}</td>
+            <td>{{ transferText(trip.outbound?.stops) }}</td>
+            <td>{{ formatPrice(trip.outbound?.price) }}</td>
+            <td>{{ trip.return_leg?.airline }}</td>
+            <td>{{ trip.return_leg?.departure_time }}</td>
+            <td>{{ transferText(trip.return_leg?.stops) }}</td>
+            <td>{{ formatPrice(trip.return_leg?.price) }}</td>
+            <td style="color: var(--green); font-weight: 600;">{{ formatPrice(trip.total_price) }}</td>
+            <td><span class="deal-score">{{ trip.score }}</span></td>
           </tr>
         </tbody>
       </table>
@@ -57,28 +57,35 @@ const loading = ref(true)
 const page = ref(1)
 const totalResults = ref(0)
 const totalPages = ref(1)
-const sortBy = ref('skor')
+const sortBy = ref('score')
 const sortOrder = ref('desc')
 
 const columns = [
-  { key: 'kalkis_havalimani', label: 'Kalkis' },
-  { key: 'varis_sehir', label: 'Sehir' },
-  { key: 'varis_ulke', label: 'Ulke' },
-  { key: 'hafta_sonu', label: 'Hafta Sonu' },
-  { key: 'havayolu_gidis', label: 'Gidis Havayolu' },
-  { key: 'kalkis_saati_gidis', label: 'Gidis Kalkis' },
-  { key: 'aktarma_int_gidis', label: 'Gidis Aktarma' },
-  { key: 'fiyat_tl_gidis', label: 'Gidis Fiyat' },
-  { key: 'havayolu_donus', label: 'Donus Havayolu' },
-  { key: 'kalkis_saati_donus', label: 'Donus Kalkis' },
-  { key: 'aktarma_int_donus', label: 'Donus Aktarma' },
-  { key: 'fiyat_tl_donus', label: 'Donus Fiyat' },
-  { key: 'toplam_fiyat', label: 'Toplam Fiyat' },
-  { key: 'skor', label: 'Skor' },
+  { key: 'origin', label: 'Kalkis' },
+  { key: 'destination_city', label: 'Sehir' },
+  { key: 'destination_country', label: 'Ulke' },
+  { key: 'weekend', label: 'Hafta Sonu' },
+  { key: 'outbound_airline', label: 'Gidis Havayolu' },
+  { key: 'outbound_departure', label: 'Gidis Kalkis' },
+  { key: 'outbound_stops', label: 'Gidis Aktarma' },
+  { key: 'outbound_price', label: 'Gidis Fiyat' },
+  { key: 'return_airline', label: 'Donus Havayolu' },
+  { key: 'return_departure', label: 'Donus Kalkis' },
+  { key: 'return_stops', label: 'Donus Aktarma' },
+  { key: 'return_price', label: 'Donus Fiyat' },
+  { key: 'total_price', label: 'Toplam Fiyat' },
+  { key: 'score', label: 'Skor' },
 ]
 
 function transferText(n) {
-  return n === 0 ? 'Direkt' : `${n} aktarma`
+  if (n === 0) return 'Direkt'
+  if (n === undefined || n === null) return ''
+  return `${n} aktarma`
+}
+
+function formatPrice(val) {
+  if (!val && val !== 0) return ''
+  return '₺' + Math.round(val).toLocaleString('tr-TR')
 }
 
 async function loadData() {
@@ -94,13 +101,20 @@ async function loadData() {
 }
 
 function toggleSort(key) {
-  const sortableKeys = ['skor', 'toplam_fiyat', 'toplam_sure', 'hafta_sonu']
-  if (!sortableKeys.includes(key)) return
-  if (sortBy.value === key) {
+  const sortableKeys = ['score', 'total_price', 'total_duration_minutes', 'weekend']
+  const map = {
+    score: 'score',
+    total_price: 'total_price',
+    total_duration_minutes: 'total_duration_minutes',
+    weekend: 'weekend',
+  }
+  const backendKey = map[key]
+  if (!sortableKeys.includes(backendKey)) return
+  if (sortBy.value === backendKey) {
     sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
   } else {
-    sortBy.value = key
-    sortOrder.value = key === 'toplam_fiyat' || key === 'hafta_sonu' ? 'asc' : 'desc'
+    sortBy.value = backendKey
+    sortOrder.value = backendKey === 'total_price' || backendKey === 'weekend' ? 'asc' : 'desc'
   }
   page.value = 1
   loadData()

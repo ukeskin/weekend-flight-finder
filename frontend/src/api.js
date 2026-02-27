@@ -13,10 +13,9 @@ export function buildParams(filters) {
   const params = {}
   if (filters.weekendStart) params.weekend_start = filters.weekendStart
   if (filters.weekendEnd) params.weekend_end = filters.weekendEnd
-  if (filters.cities && filters.cities.length) params.cities = filters.cities.join(',')
+  if (filters.destinations && filters.destinations.length) params.destinations = filters.destinations.join(',')
   if (filters.maxPrice) params.max_price = filters.maxPrice
   if (filters.directOnly) params.direct_only = true
-  if (filters.origin && filters.origin !== 'all') params.origin = filters.origin
   return params
 }
 

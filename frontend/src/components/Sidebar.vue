@@ -14,10 +14,10 @@
   <label>Destinasyon</label>
   <select
     multiple
-    :value="filters.cities"
+    :value="filters.destinations"
     @change="onCitiesChange"
   >
-    <option v-for="d in destinations" :key="d" :value="d">{{ d }}</option>
+    <option v-for="d in destinations" :key="d.code" :value="d.code">{{ d.label }}</option>
   </select>
 
   <label>Maks. Toplam Fiyat (TRY)</label>
@@ -40,18 +40,6 @@
     <label for="directOnly" style="margin:0">Sadece direkt ucus</label>
   </div>
 
-  <label>Kalkis Havalimani</label>
-  <div class="radio-group">
-    <label v-for="opt in origins" :key="opt.value" :class="{ active: filters.origin === opt.value }">
-      <input
-        type="radio"
-        :value="opt.value"
-        :checked="filters.origin === opt.value"
-        @change="emit('update:filters', { ...filters, origin: opt.value })"
-      />
-      {{ opt.label }}
-    </label>
-  </div>
 </template>
 
 <script setup>
@@ -63,14 +51,8 @@ const props = defineProps({
 
 const emit = defineEmits(['update:filters'])
 
-const origins = [
-  { value: 'all', label: 'Hepsi' },
-  { value: 'IST', label: 'IST' },
-  { value: 'SAW', label: 'SAW' },
-]
-
 function onCitiesChange(e) {
   const selected = Array.from(e.target.selectedOptions, o => o.value)
-  emit('update:filters', { ...props.filters, cities: selected })
+  emit('update:filters', { ...props.filters, destinations: selected })
 }
 </script>

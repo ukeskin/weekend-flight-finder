@@ -26,7 +26,7 @@ const weekends = ref([])
 const filters = ref({
   weekendStart: '',
   weekendEnd: '',
-  cities: [],
+  destinations: [],
   maxPrice: null,
   directOnly: false,
 })
@@ -46,7 +46,7 @@ onMounted(async () => {
     filters.value.weekendEnd = wkends[0]
   }
   if (dests.length >= 1) {
-    filters.value.cities = dests.slice(0, 3).map(d => d.code)
+    filters.value.destinations = dests.slice(0, 3).map(d => d.code)
   }
 })
 </script>
