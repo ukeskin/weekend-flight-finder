@@ -25,8 +25,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY data_processing.py .
 
-# SQLite database
-COPY data/ ./data/
+# SQLite database (compressed)
+COPY data/flights.db.gz ./data/
+RUN gunzip ./data/flights.db.gz
 
 # Frontend built files
 COPY --from=frontend-build /app/dist /usr/share/nginx/html
