@@ -1,52 +1,66 @@
-"""Ucus API endpoint'leri."""
+"""Ucus API endpoint'leri (canli arama)."""
 
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
-from backend.database import get_connection
-from backend.models import (
-    PaginatedTrips, TripResponse, StatsResponse,
-    HeatmapCell, CityCompare,
-)
+from backend.flight_search import get_destinations, get_weekends, search_weekend_trips
+from backend.models import DestinationOption, PaginatedTrips, TripItem
 
 router = APIRouter(prefix="/api", tags=["flights"])
 
 
-def _build_where(
-    weekend_start: Optional[str],
-    weekend_end: Optional[str],
-    cities: Optional[str],
-    max_price: Optional[float],
-    direct_only: bool,
-    origin: Optional[str],
-):
-    clauses = []
-    params = []
+def _parse_destinations(destinations: Optional[str]) -> Optional[list[str]]:
+    if not destinations:
+        return None
+    return [d.strip().upper() for d in destinations.split(",") if d.strip()]
 
-    if weekend_start:
-        clauses.append("hafta_sonu >= ?")
-        params.append(weekend_start)
-    if weekend_end:
-        clauses.append("hafta_sonu <= ?")
-        params.append(weekend_end)
-    if cities:
-        city_list = [c.strip() for c in cities.split(",") if c.strip()]
-        if city_list:
-            placeholders = ",".join(["?"] * len(city_list))
-            clauses.append(f"varis_sehir IN ({placeholders})")
-            params.extend(city_list)
-    if max_price is not None:
-        clauses.append("toplam_fiyat <= ?")
-        params.append(max_price)
-    if direct_only:
-        clauses.append("max_aktarma = 0")
-    if origin and origin.upper() in ("IST", "SAW"):
-        clauses.append("kalkis_havalimani = ?")
-        params.append(origin.upper())
 
-    where = " WHERE " + " AND ".join(clauses) if clauses else ""
-    return where, params
+def _map_trip(row: dict) -> TripItem:
+    outbound = {
+        "airline": row.get("havayolu_gidis"),
+        "departure_time": row.get("kalkis_saati_gidis"),
+        "arrival_time": row.get("varis_saati_gidis"),
+        "duration": row.get("sure_gidis"),
+        "duration_minutes": row.get("sure_dk_gidis"),
+        "stops": row.get("aktarma_int_gidis"),
+        "price": row.get("fiyat_tl_gidis"),
+    }
+    return_leg = {
+        "airline": row.get("havayolu_donus"),
+        "departure_time": row.get("kalkis_saati_donus"),
+        "arrival_time": row.get("varis_saati_donus"),
+        "duration": row.get("sure_donus"),
+        "duration_minutes": row.get("sure_dk_donus"),
+        "stops": row.get("aktarma_int_donus"),
+        "price": row.get("fiyat_tl_donus"),
+    }
+    trip_id = f"{row.get('kalkis_havalimani')}-{row.get('varis_havalimani')}-{row.get('hafta_sonu')}-{row.get('kalkis_saati_gidis')}-{row.get('kalkis_saati_donus')}"
+
+    return TripItem(
+        id=trip_id,
+        origin=row.get("kalkis_havalimani", ""),
+        destination_code=row.get("varis_havalimani", ""),
+        destination_city=row.get("varis_sehir", ""),
+        destination_country=row.get("varis_ulke", ""),
+        weekend=row.get("hafta_sonu", ""),
+        outbound=outbound,
+        return_leg=return_leg,
+        total_price=row.get("toplam_fiyat") or 0,
+        total_duration_minutes=row.get("toplam_sure"),
+        max_stops=row.get("max_aktarma"),
+        score=row.get("skor"),
+    )
+
+
+@router.get("/destinations", response_model=list[DestinationOption])
+def list_destinations():
+    return get_destinations()
+
+
+@router.get("/weekends", response_model=list[str])
+def list_weekends():
+    return get_weekends()
 
 
 @router.get("/trips", response_model=PaginatedTrips)
@@ -55,136 +69,47 @@ def get_trips(
     per_page: int = Query(20, ge=1, le=100),
     weekend_start: Optional[str] = None,
     weekend_end: Optional[str] = None,
-    cities: Optional[str] = None,
+    destinations: Optional[str] = None,
     max_price: Optional[float] = None,
     direct_only: bool = False,
-    origin: Optional[str] = None,
-    sort_by: str = Query("skor", pattern="^(skor|toplam_fiyat|toplam_sure|hafta_sonu)$"),
+    sort_by: str = Query("score", pattern="^(score|total_price|total_duration_minutes|weekend)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
 ):
-    where, params = _build_where(weekend_start, weekend_end, cities, max_price, direct_only, origin)
+    dest_list = _parse_destinations(destinations)
+    try:
+        raw_trips = search_weekend_trips(
+            weekend_start=weekend_start,
+            weekend_end=weekend_end,
+            destinations=dest_list,
+            max_price=max_price,
+            direct_only=direct_only,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    with get_connection() as conn:
-        total = conn.execute(f"SELECT COUNT(*) FROM trips{where}", params).fetchone()[0]
+    trips = [_map_trip(row) for row in raw_trips]
 
-        offset = (page - 1) * per_page
-        rows = conn.execute(
-            f"SELECT * FROM trips{where} ORDER BY {sort_by} {sort_order} LIMIT ? OFFSET ?",
-            params + [per_page, offset],
-        ).fetchall()
+    def sort_key(item: TripItem):
+        if sort_by == "total_price":
+            return item.total_price or 0
+        if sort_by == "total_duration_minutes":
+            return item.total_duration_minutes or 0
+        if sort_by == "weekend":
+            return item.weekend or ""
+        return item.score or 0
 
-        data = [TripResponse(**dict(row)) for row in rows]
-        total_pages = (total + per_page - 1) // per_page
+    reverse = sort_order == "desc"
+    trips = sorted(trips, key=sort_key, reverse=reverse)
 
-    return PaginatedTrips(data=data, total=total, page=page, per_page=per_page, total_pages=total_pages)
+    total = len(trips)
+    offset = (page - 1) * per_page
+    data = trips[offset: offset + per_page]
+    total_pages = (total + per_page - 1) // per_page if total else 1
 
-
-@router.get("/trips/top", response_model=list[TripResponse])
-def get_top_trips(
-    n: int = Query(20, ge=1, le=100),
-    weekend_start: Optional[str] = None,
-    weekend_end: Optional[str] = None,
-    cities: Optional[str] = None,
-    max_price: Optional[float] = None,
-    direct_only: bool = False,
-    origin: Optional[str] = None,
-):
-    where, params = _build_where(weekend_start, weekend_end, cities, max_price, direct_only, origin)
-
-    with get_connection() as conn:
-        rows = conn.execute(
-            f"SELECT * FROM trips{where} ORDER BY skor DESC LIMIT ?",
-            params + [n],
-        ).fetchall()
-
-    return [TripResponse(**dict(row)) for row in rows]
-
-
-@router.get("/stats", response_model=StatsResponse)
-def get_stats(
-    weekend_start: Optional[str] = None,
-    weekend_end: Optional[str] = None,
-    cities: Optional[str] = None,
-    max_price: Optional[float] = None,
-    direct_only: bool = False,
-    origin: Optional[str] = None,
-):
-    where, params = _build_where(weekend_start, weekend_end, cities, max_price, direct_only, origin)
-
-    with get_connection() as conn:
-        row = conn.execute(
-            f"SELECT COUNT(*) as total, MIN(toplam_fiyat) as cheapest, "
-            f"AVG(toplam_fiyat) as average, COUNT(DISTINCT varis_sehir) as destinations "
-            f"FROM trips{where}",
-            params,
-        ).fetchone()
-
-    return StatsResponse(
-        total=row["total"],
-        cheapest=row["cheapest"],
-        average=round(row["average"], 0) if row["average"] else None,
-        destinations=row["destinations"],
+    return PaginatedTrips(
+        data=data,
+        total=total,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
     )
-
-
-@router.get("/destinations", response_model=list[str])
-def get_destinations():
-    with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT DISTINCT varis_sehir FROM trips ORDER BY varis_sehir"
-        ).fetchall()
-    return [row["varis_sehir"] for row in rows]
-
-
-@router.get("/weekends", response_model=list[str])
-def get_weekends():
-    with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT DISTINCT hafta_sonu FROM trips ORDER BY hafta_sonu"
-        ).fetchall()
-    return [row["hafta_sonu"] for row in rows]
-
-
-@router.get("/heatmap", response_model=list[HeatmapCell])
-def get_heatmap(
-    weekend_start: Optional[str] = None,
-    weekend_end: Optional[str] = None,
-    cities: Optional[str] = None,
-    max_price: Optional[float] = None,
-    direct_only: bool = False,
-    origin: Optional[str] = None,
-):
-    where, params = _build_where(weekend_start, weekend_end, cities, max_price, direct_only, origin)
-
-    with get_connection() as conn:
-        rows = conn.execute(
-            f"SELECT varis_sehir, hafta_sonu, MIN(toplam_fiyat) as min_price "
-            f"FROM trips{where} GROUP BY varis_sehir, hafta_sonu "
-            f"ORDER BY varis_sehir, hafta_sonu",
-            params,
-        ).fetchall()
-
-    return [HeatmapCell(city=r["varis_sehir"], weekend=r["hafta_sonu"], min_price=r["min_price"]) for r in rows]
-
-
-@router.get("/city-compare", response_model=list[CityCompare])
-def get_city_compare(
-    weekend_start: Optional[str] = None,
-    weekend_end: Optional[str] = None,
-    cities: Optional[str] = None,
-    max_price: Optional[float] = None,
-    direct_only: bool = False,
-    origin: Optional[str] = None,
-):
-    where, params = _build_where(weekend_start, weekend_end, cities, max_price, direct_only, origin)
-
-    with get_connection() as conn:
-        rows = conn.execute(
-            f"SELECT varis_sehir, MIN(toplam_fiyat) as min_price, "
-            f"ROUND(AVG(toplam_fiyat), 0) as avg_price, COUNT(*) as count "
-            f"FROM trips{where} GROUP BY varis_sehir ORDER BY min_price",
-            params,
-        ).fetchall()
-
-    return [CityCompare(city=r["varis_sehir"], min_price=r["min_price"],
-                        avg_price=r["avg_price"], count=r["count"]) for r in rows]
