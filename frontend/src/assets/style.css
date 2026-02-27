@@ -273,12 +273,17 @@ body {
   font-weight: 600;
   position: sticky;
   top: 0;
-  cursor: pointer;
+  cursor: default;
   white-space: nowrap;
   user-select: none;
 }
 
-.data-table th:hover {
+.data-table th.sortable {
+  cursor: pointer;
+}
+
+.data-table th.sortable:hover,
+.data-table th.sortable:focus {
   color: var(--accent);
 }
 
@@ -305,6 +310,16 @@ body {
   align-items: center;
   padding: 12px 0;
   color: var(--text-muted);
+  font-size: 13px;
+}
+
+.error-banner {
+  border: 1px solid #f5a0a0;
+  background: #2b1414;
+  color: #ffd6d6;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
   font-size: 13px;
 }
 

@@ -1,16 +1,29 @@
 <template>
-  <div v-if="loading" class="loading">
+  <div v-if="loading" class="loading" role="status" aria-live="polite">
     <div class="loading-spinner"></div>
     <div>Yukleniyor...</div>
   </div>
   <div v-else>
+    <div v-if="errorMsg" class="error-banner" role="alert" aria-live="assertive">
+      {{ errorMsg }}
+    </div>
     <div class="table-container">
       <table class="data-table">
         <thead>
           <tr>
-            <th v-for="col in columns" :key="col.key" @click="toggleSort(col.key)">
+            <th
+              v-for="col in columns"
+              :key="col.key"
+              :class="{ sortable: col.sortKey }"
+              :aria-sort="col.sortKey ? (sortBy === col.sortKey ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none') : undefined"
+              :role="col.sortKey ? 'button' : undefined"
+              :tabindex="col.sortKey ? 0 : undefined"
+              @click="col.sortKey && toggleSort(col.sortKey)"
+              @keydown.enter.prevent="col.sortKey && toggleSort(col.sortKey)"
+              @keydown.space.prevent="col.sortKey && toggleSort(col.sortKey)"
+            >
               {{ col.label }}
-              <template v-if="sortBy === col.key">{{ sortOrder === 'asc' ? ' ▲' : ' ▼' }}</template>
+              <template v-if="col.sortKey && sortBy === col.sortKey">{{ sortOrder === 'asc' ? ' ▲' : ' ▼' }}</template>
             </th>
           </tr>
         </thead>
@@ -54,6 +67,7 @@ const props = defineProps({ filters: Object })
 
 const trips = ref([])
 const loading = ref(true)
+const errorMsg = ref('')
 const page = ref(1)
 const totalResults = ref(0)
 const totalPages = ref(1)
@@ -64,7 +78,7 @@ const columns = [
   { key: 'origin', label: 'Kalkis' },
   { key: 'destination_city', label: 'Sehir' },
   { key: 'destination_country', label: 'Ulke' },
-  { key: 'weekend', label: 'Hafta Sonu' },
+  { key: 'weekend', label: 'Hafta Sonu', sortKey: 'weekend' },
   { key: 'outbound_airline', label: 'Gidis Havayolu' },
   { key: 'outbound_departure', label: 'Gidis Kalkis' },
   { key: 'outbound_stops', label: 'Gidis Aktarma' },
@@ -73,8 +87,8 @@ const columns = [
   { key: 'return_departure', label: 'Donus Kalkis' },
   { key: 'return_stops', label: 'Donus Aktarma' },
   { key: 'return_price', label: 'Donus Fiyat' },
-  { key: 'total_price', label: 'Toplam Fiyat' },
-  { key: 'score', label: 'Skor' },
+  { key: 'total_price', label: 'Toplam Fiyat', sortKey: 'total_price' },
+  { key: 'score', label: 'Skor', sortKey: 'score' },
 ]
 
 function transferText(n) {
@@ -90,31 +104,26 @@ function formatPrice(val) {
 
 async function loadData() {
   loading.value = true
+  errorMsg.value = ''
   try {
     const result = await fetchTrips(props.filters, page.value, 50, sortBy.value, sortOrder.value)
     trips.value = result.data
     totalResults.value = result.total
     totalPages.value = result.total_pages
+  } catch (err) {
+    errorMsg.value = getErrorMessage(err)
   } finally {
     loading.value = false
   }
 }
 
-function toggleSort(key) {
-  const sortableKeys = ['score', 'total_price', 'total_duration_minutes', 'weekend']
-  const map = {
-    score: 'score',
-    total_price: 'total_price',
-    total_duration_minutes: 'total_duration_minutes',
-    weekend: 'weekend',
-  }
-  const backendKey = map[key]
-  if (!sortableKeys.includes(backendKey)) return
-  if (sortBy.value === backendKey) {
+function toggleSort(sortKey) {
+  if (!sortKey) return
+  if (sortBy.value === sortKey) {
     sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
   } else {
-    sortBy.value = backendKey
-    sortOrder.value = backendKey === 'total_price' || backendKey === 'weekend' ? 'asc' : 'desc'
+    sortBy.value = sortKey
+    sortOrder.value = sortKey === 'total_price' || sortKey === 'weekend' ? 'asc' : 'desc'
   }
   page.value = 1
   loadData()
@@ -123,6 +132,13 @@ function toggleSort(key) {
 function goPage(p) {
   page.value = p
   loadData()
+}
+
+function getErrorMessage(err) {
+  const detail = err?.response?.data?.detail
+  if (detail) return detail
+  if (err?.message) return err.message
+  return 'Beklenmeyen bir hata olustu. Lutfen tekrar deneyin.'
 }
 
 onMounted(loadData)

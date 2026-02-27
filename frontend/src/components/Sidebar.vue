@@ -1,18 +1,19 @@
 <template>
   <h2>Filtreler</h2>
 
-  <label>Hafta Sonu Baslangic</label>
-  <select :value="filters.weekendStart" @change="emit('update:filters', { ...filters, weekendStart: $event.target.value })">
+  <label for="weekendStart">Hafta Sonu Baslangic</label>
+  <select id="weekendStart" :value="filters.weekendStart" @change="emit('update:filters', { ...filters, weekendStart: $event.target.value })">
     <option v-for="w in weekends" :key="w" :value="w">{{ w }}</option>
   </select>
 
-  <label>Hafta Sonu Bitis</label>
-  <select :value="filters.weekendEnd" @change="emit('update:filters', { ...filters, weekendEnd: $event.target.value })">
+  <label for="weekendEnd">Hafta Sonu Bitis</label>
+  <select id="weekendEnd" :value="filters.weekendEnd" @change="emit('update:filters', { ...filters, weekendEnd: $event.target.value })">
     <option v-for="w in weekends" :key="w" :value="w">{{ w }}</option>
   </select>
 
-  <label>Destinasyon</label>
+  <label for="destinations">Destinasyon</label>
   <select
+    id="destinations"
     multiple
     :value="filters.destinations"
     @change="onCitiesChange"
@@ -20,8 +21,9 @@
     <option v-for="d in destinations" :key="d.code" :value="d.code">{{ d.label }}</option>
   </select>
 
-  <label>Maks. Toplam Fiyat (TRY)</label>
+  <label for="maxPrice">Maks. Toplam Fiyat (TRY)</label>
   <input
+    id="maxPrice"
     type="number"
     :value="filters.maxPrice"
     @change="emit('update:filters', { ...filters, maxPrice: $event.target.value ? Number($event.target.value) : null })"
