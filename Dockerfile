@@ -4,10 +4,6 @@ WORKDIR /app
 COPY frontend/package.json ./
 RUN npm install
 COPY frontend/ .
-ARG VITE_API_KEY
-ARG VITE_API_BASE=""
-ENV VITE_API_KEY=$VITE_API_KEY
-ENV VITE_API_BASE=$VITE_API_BASE
 RUN npm run build
 
 # Stage 2: Backend + Nginx
